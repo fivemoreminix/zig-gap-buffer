@@ -52,12 +52,18 @@ pub const GapBuffer = struct {
     gap_start: usize,
     gap_len:   usize,
 
+    const GapBufferError = error {
+        InvalidUtf8,
+        OutOfBounds,
+        OutOfMemory,
+    };
+
     /// Initialize the GapBuffer with the given string as data.
     ///
     /// This function will verify that the given data is valid UTF-8.
     /// To prevent validation, you can use initUnchecked. An
     /// `error.InvalidUtf8` signals the data was not valid UTF-8.
-    pub fn init(allocator: *Allocator, data: []const u8) !GapBuffer {
+    pub fn init(allocator: *Allocator, data: []const u8) GapBufferError!GapBuffer {
         // Verify that the provided data is valid UTF-8
         if (!std.unicode.utf8ValidateSlice(data)) {
             return error.InvalidUtf8;
@@ -67,7 +73,7 @@ pub const GapBuffer = struct {
     }
 
     /// Initialize the GapBuffer with the given string as data, without validations.
-    pub fn initUnchecked(allocator: *Allocator, data: []const u8) !GapBuffer {
+    pub fn initUnchecked(allocator: *Allocator, data: []const u8) GapBufferError!GapBuffer {
         var array_list = try ArrayList(u8).initCapacity(allocator, data.len);
         array_list.expandToCapacity();
         mem.copy(u8, array_list.items[0..data.len], data);
@@ -81,7 +87,7 @@ pub const GapBuffer = struct {
     /// Returns all of the text from the buffer as a new string.
     /// 
     /// The caller is responsible for freeing the returned string.
-    pub fn toSlice(self: Self, allocator: *Allocator) ![]const u8 {
+    pub fn toSlice(self: Self, allocator: *Allocator) GapBufferError![]const u8 {
         var s1 = self.data.items[0..self.gap_start];
         var s2 = self.data.items[self.gap_start+self.gap_len..];
         var result = try allocator.alloc(u8, s1.len + s2.len);
@@ -98,7 +104,7 @@ pub const GapBuffer = struct {
     /// If the position does not exist in the buffer, `error.OutOfBounds`
     /// is returned. An `error.OutOfMemory` is possible here. In addition,
     /// an error from `findOffset` may be returned also.
-    pub fn insert(self: *Self, data: []const u8, pos: Position) !void {
+    pub fn insert(self: *Self, data: []const u8, pos: Position) GapBufferError!void {
         // Verify that the provided data is valid UTF-8
         if (!std.unicode.utf8ValidateSlice(data)) {
             return error.InvalidUtf8;
@@ -108,7 +114,7 @@ pub const GapBuffer = struct {
     }
 
     /// Insert text at the given position in the buffer, without validations.
-    pub fn insertUnchecked(self: *Self, data: []const u8, pos: Position) !void {
+    pub fn insertUnchecked(self: *Self, data: []const u8, pos: Position) GapBufferError!void {
         if (data.len > self.gap_len) { // If we need to allocate more memory ...
             self.moveGap(self.data.capacity); // Move gap to end
 
@@ -128,7 +134,7 @@ pub const GapBuffer = struct {
     /// If any part of the range is not found in the buffer, a null value will be returned.
     ///
     /// The caller is responsible for freeing the returned string.
-    pub fn read(self: Self, allocator: *Allocator, range: Range) !?[]const u8 {
+    pub fn read(self: Self, allocator: *Allocator, range: Range) GapBufferError!?[]const u8 {
         var start_offset = self.findOffset(range.start) orelse return null;
         var end_offset = self.findOffset(range.end) orelse return null;
 
