@@ -1,0 +1,16 @@
+pkgs:
+  gap-buffer:
+    version: 0.0.0
+    description: "A gap buffer implementation for Zig."
+    license: MIT
+    source_url: "https://github.com/fivemoreminix/zig-gap-buffer"
+    tags:
+      gap-buffers
+      cursor
+      allocation
+      data-structures
+
+    root: src/gap-buffer.zig
+    files:
+      README.md
+      LICENSE
