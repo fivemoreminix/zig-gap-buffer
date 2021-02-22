@@ -32,13 +32,13 @@ const Buffer = std.Buffer;
 /// `line = 0, col = 0` is the first line, first character.
 pub const Position = struct {
     line: usize,
-    col:  usize,
+    col: usize,
 };
 
 /// A range between two positions in a buffer. Inclusive.
 pub const Range = struct {
     start: Position,
-    end:   Position,
+    end: Position,
 };
 
 /// A gap buffer is like a growable array, but the reserved space is
@@ -48,11 +48,11 @@ pub const Range = struct {
 pub const GapBuffer = struct {
     const Self = @This();
 
-    data:      ArrayList(u8),
+    data: ArrayList(u8),
     gap_start: usize,
-    gap_len:   usize,
+    gap_len: usize,
 
-    const GapBufferError = error {
+    const GapBufferError = error{
         InvalidUtf8,
         OutOfBounds,
         OutOfMemory,
@@ -85,11 +85,11 @@ pub const GapBuffer = struct {
     }
 
     /// Returns all of the text from the buffer as a new string.
-    /// 
+    ///
     /// The caller is responsible for freeing the returned string.
     pub fn toSlice(self: Self, allocator: *Allocator) GapBufferError![]const u8 {
         var s1 = self.data.items[0..self.gap_start];
-        var s2 = self.data.items[self.gap_start+self.gap_len..];
+        var s2 = self.data.items[self.gap_start + self.gap_len ..];
         var result = try allocator.alloc(u8, s1.len + s2.len);
         mem.copy(u8, result, s1);
         mem.copy(u8, result[s1.len..], s2);
@@ -140,7 +140,7 @@ pub const GapBuffer = struct {
 
         if (start_offset < self.gap_start and self.gap_start < end_offset) { // If the gap is between the two positions ...
             var s1 = self.data.items[start_offset..self.gap_start]; // First half
-            var s2 = self.data.items[self.gap_start+self.gap_len..end_offset+1]; // Second half
+            var s2 = self.data.items[self.gap_start + self.gap_len .. end_offset + 1]; // Second half
 
             var str = try allocator.alloc(u8, s1.len + s2.len);
 
@@ -150,7 +150,7 @@ pub const GapBuffer = struct {
             return str;
         } else {
             // No gap in the way, just return the requested data range
-            var s = self.data.items[start_offset..end_offset+1];
+            var s = self.data.items[start_offset .. end_offset + 1];
 
             var str = try allocator.alloc(u8, s.len);
             mem.copy(u8, str, s);
@@ -212,7 +212,7 @@ pub const GapBuffer = struct {
         // If the position wasn't in the first half, it could be at the start of the gap
         if (line == pos.line and col == pos.col) return self.gap_start + self.gap_len;
 
-        var second_half = self.data.items[self.gap_start+self.gap_len..];
+        var second_half = self.data.items[self.gap_start + self.gap_len ..];
         iter = std.unicode.Utf8View.initUnchecked(second_half).iterator();
         offset = 0;
         while (iter.nextCodepointSlice()) |c| : (offset += c.len) {
@@ -273,7 +273,7 @@ test "utf-8" {
     var gb = try GapBuffer.init(alloc, "鶸膱𩋍ꈵO֫窄|̋喛\\ꜯnG"); // Random UTF-8 string
     defer gb.deinit();
 
-    var offset = gb.findOffset(.{.line = 0, .col = 6}); // Get the starting index of the SEVENTH character
+    var offset = gb.findOffset(.{ .line = 0, .col = 6 }); // Get the starting index of the SEVENTH character
     testing.expect(offset.? == 16);
 }
 
@@ -283,13 +283,13 @@ test "lines and columns" {
     var gb = try GapBuffer.init(alloc, "first\n    second\n\t\tthird\n\nfifth");
     defer gb.deinit();
 
-    var offset = gb.findOffset(.{.line = 1, .col = 4}); // Get the first letter of word "second" (0-indexed)
+    var offset = gb.findOffset(.{ .line = 1, .col = 4 }); // Get the first letter of word "second" (0-indexed)
     testing.expect(offset.? == 10);
 
-    offset = gb.findOffset(.{.line = 2, .col = 2}); // Get the first letter of word "third"
+    offset = gb.findOffset(.{ .line = 2, .col = 2 }); // Get the first letter of word "third"
     testing.expect(offset.? == 19);
 
-    offset = gb.findOffset(.{.line = 4, .col = 0}); // Get the first letter of word "third"
+    offset = gb.findOffset(.{ .line = 4, .col = 0 }); // Get the first letter of word "third"
     testing.expect(offset.? == 26);
 }
 
@@ -299,9 +299,9 @@ test "inBounds" {
     var gb = try GapBuffer.init(alloc, "鶸膱𩋍ꈵO֫窄|̋喛\\ꜯnG"); // Random UTF-8 string
     defer gb.deinit();
 
-    testing.expect(gb.inBounds(.{.line = 0, .col = 7}) == true);
-    testing.expect(gb.inBounds(.{.line = 0, .col = 16}) == false);
-    testing.expect(gb.inBounds(.{.line = 1, .col = 0}) == false);
+    testing.expect(gb.inBounds(.{ .line = 0, .col = 7 }) == true);
+    testing.expect(gb.inBounds(.{ .line = 0, .col = 16 }) == false);
+    testing.expect(gb.inBounds(.{ .line = 1, .col = 0 }) == false);
 }
 
 test "read from ranges" {
@@ -310,7 +310,7 @@ test "read from ranges" {
     var gb = try GapBuffer.init(alloc, "first\n    second\n\t\tthird\n\nfifth");
     defer gb.deinit();
 
-    const pos = Range { .start=.{ .line=1,.col=0}, .end=.{.line=2,.col=7} };
+    const pos = Range{ .start = .{ .line = 1, .col = 0 }, .end = .{ .line = 2, .col = 7 } };
     var lines_2_and_3 = try gb.read(alloc, pos);
     defer alloc.free(lines_2_and_3.?);
 
@@ -323,7 +323,7 @@ test "inserting and deleting text" {
     var gb = try GapBuffer.init(alloc, "init");
     defer gb.deinit();
 
-    try gb.insert("ial text", .{.line=0,.col=4});
+    try gb.insert("ial text", .{ .line = 0, .col = 4 });
     var tmp1 = try gb.toSlice(alloc);
     defer alloc.free(tmp1);
     testing.expectEqualStrings(tmp1, "initial text");
@@ -333,7 +333,7 @@ test "inserting and deleting text" {
     defer alloc.free(tmp2);
     testing.expectEqualStrings(tmp2, "init text");
 
-    try gb.insert(" sequence! :)", Position { .line = 0, .col = 9 });
+    try gb.insert(" sequence! :)", Position{ .line = 0, .col = 9 });
     var tmp3 = try gb.toSlice(alloc);
     defer alloc.free(tmp3);
     testing.expectEqualStrings(tmp3, "init text sequence! :)");
