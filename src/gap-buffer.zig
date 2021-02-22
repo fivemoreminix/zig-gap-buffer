@@ -22,9 +22,10 @@
 
 const std = @import("std");
 const mem = std.mem;
+const testing = std.testing;
+
 const Allocator = mem.Allocator;
 const ArrayList = std.ArrayList;
-const testing = std.testing;
 const Buffer = std.Buffer;
 
 /// A zero-indexed position of a buffer.
@@ -95,7 +96,7 @@ pub const GapBuffer = struct {
     /// is valid UTF-8.
     ///
     /// If the position does not exist in the buffer, `error.OutOfBounds`
-    /// is returned. A `error.OutOfMemory` is possible here. In addition,
+    /// is returned. An `error.OutOfMemory` is possible here. In addition,
     /// an error from `findOffset` may be returned also.
     pub fn insert(self: *Self, data: []const u8, pos: Position) !void {
         // Verify that the provided data is valid UTF-8
@@ -106,7 +107,7 @@ pub const GapBuffer = struct {
         return insertUnchecked(self, data, pos);
     }
 
-    /// /// Insert text at the given position in the buffer, without validations.
+    /// Insert text at the given position in the buffer, without validations.
     pub fn insertUnchecked(self: *Self, data: []const u8, pos: Position) !void {
         if (data.len > self.gap_len) { // If we need to allocate more memory ...
             self.moveGap(self.data.capacity); // Move gap to end
@@ -251,50 +252,46 @@ pub const GapBuffer = struct {
 };
 
 test "basic init and moving the gap" {
-    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-    defer arena.deinit();
+    const alloc = testing.allocator;
 
-    var gb = try GapBuffer.init(&arena.allocator, "this is a test 你好");
+    var gb = try GapBuffer.init(alloc, "this is a test");
+    defer gb.deinit();
 
     gb.moveGap(3); // Set gap start position to index 3
     testing.expect(gb.gap_start == 3);
 }
 
 test "utf-8" {
-    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-    defer arena.deinit();
+    const alloc = testing.allocator;
 
-    var gb = try GapBuffer.init(&arena.allocator, "鶸膱𩋍ꈵO֫窄|̋喛\\ꜯnG"); // Random UTF-8 string
+    var gb = try GapBuffer.init(alloc, "鶸膱𩋍ꈵO֫窄|̋喛\\ꜯnG"); // Random UTF-8 string
+    defer gb.deinit();
 
     var offset = gb.findOffset(.{.line = 0, .col = 6}); // Get the starting index of the SEVENTH character
-    testing.expect(offset != null);
-    testing.expect(offset orelse unreachable == 16);
+    testing.expect(offset.? == 16);
 }
 
 test "lines and columns" {
-    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-    defer arena.deinit();
+    const alloc = testing.allocator;
 
-    var gb = try GapBuffer.init(&arena.allocator, "first\n    second\n\t\tthird\n\nfifth");
+    var gb = try GapBuffer.init(alloc, "first\n    second\n\t\tthird\n\nfifth");
+    defer gb.deinit();
 
     var offset = gb.findOffset(.{.line = 1, .col = 4}); // Get the first letter of word "second" (0-indexed)
-    testing.expect(offset != null);
-    testing.expect(offset orelse unreachable == 10);
+    testing.expect(offset.? == 10);
 
     offset = gb.findOffset(.{.line = 2, .col = 2}); // Get the first letter of word "third"
-    testing.expect(offset != null);
-    testing.expect(offset orelse unreachable == 19);
+    testing.expect(offset.? == 19);
 
     offset = gb.findOffset(.{.line = 4, .col = 0}); // Get the first letter of word "third"
-    testing.expect(offset != null);
-    testing.expect(offset orelse unreachable == 26);
+    testing.expect(offset.? == 26);
 }
 
 test "inBounds" {
-    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-    defer arena.deinit();
+    const alloc = testing.allocator;
 
-    var gb = try GapBuffer.init(&arena.allocator, "鶸膱𩋍ꈵO֫窄|̋喛\\ꜯnG"); // Random UTF-8 string
+    var gb = try GapBuffer.init(alloc, "鶸膱𩋍ꈵO֫窄|̋喛\\ꜯnG"); // Random UTF-8 string
+    defer gb.deinit();
 
     testing.expect(gb.inBounds(.{.line = 0, .col = 7}) == true);
     testing.expect(gb.inBounds(.{.line = 0, .col = 16}) == false);
@@ -302,29 +299,36 @@ test "inBounds" {
 }
 
 test "read from ranges" {
-    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-    defer arena.deinit();
+    const alloc = testing.allocator;
 
-    var gb = try GapBuffer.init(&arena.allocator, "first\n    second\n\t\tthird\n\nfifth");
+    var gb = try GapBuffer.init(alloc, "first\n    second\n\t\tthird\n\nfifth");
+    defer gb.deinit();
 
     const pos = Range { .start=.{ .line=1,.col=0}, .end=.{.line=2,.col=7} };
-    var lines_2_and_3 = try gb.read(&arena.allocator, pos);
-    testing.expect(lines_2_and_3 != null);
-    testing.expect(mem.eql(u8, lines_2_and_3 orelse unreachable, "    second\n\t\tthird\n"));
+    var lines_2_and_3 = try gb.read(alloc, pos);
+    defer alloc.free(lines_2_and_3.?);
+
+    testing.expectEqualStrings(lines_2_and_3.?, "    second\n\t\tthird\n");
 }
 
 test "inserting and deleting text" {
-    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-    defer arena.deinit();
+    const alloc = testing.allocator;
 
-    var gb = try GapBuffer.init(&arena.allocator, "init");
+    var gb = try GapBuffer.init(alloc, "init");
+    defer gb.deinit();
 
     try gb.insert("ial text", .{.line=0,.col=4});
-    testing.expect(mem.eql(u8, try gb.toSlice(&arena.allocator), "initial text"));
+    var tmp1 = try gb.toSlice(alloc);
+    defer alloc.free(tmp1);
+    testing.expectEqualStrings(tmp1, "initial text");
 
     gb.delete(.{ .start = .{ .line = 0, .col = 4 }, .end = .{ .line = 0, .col = 6 } });
-    testing.expect(mem.eql(u8, try gb.toSlice(&arena.allocator), "init text"));
+    var tmp2 = try gb.toSlice(alloc);
+    defer alloc.free(tmp2);
+    testing.expectEqualStrings(tmp2, "init text");
 
     try gb.insert(" sequence! :)", Position { .line = 0, .col = 9 });
-    testing.expect(mem.eql(u8, try gb.toSlice(&arena.allocator), "init text sequence! :)"));
+    var tmp3 = try gb.toSlice(alloc);
+    defer alloc.free(tmp3);
+    testing.expectEqualStrings(tmp3, "init text sequence! :)");
 }

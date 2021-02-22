@@ -26,7 +26,7 @@ pub fn main() void {
     defer arena.deinit();
 
     var gb = try GapBuffer.init(&arena.allocator, "");
-    // gb.deinit(); // Arena frees data automatically
+    // defer gb.deinit(); // Arena frees data automatically
 
     // Insert some text into the currently empty buffer
     try gb.insert("some text", .{ .line = 0, .col = 0 });
